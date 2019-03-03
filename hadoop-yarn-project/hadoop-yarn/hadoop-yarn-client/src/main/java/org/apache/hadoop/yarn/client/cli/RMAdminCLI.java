@@ -913,8 +913,10 @@ public class RMAdminCLI extends HAAdmin {
         printUsage(cmd, isHAEnabled);
         return -1;
       }
+      // graceful decommission
       return refreshNodes(timeout, trackingMode);
     } else {
+      // normal decommission
       return refreshNodes();
     }
   }

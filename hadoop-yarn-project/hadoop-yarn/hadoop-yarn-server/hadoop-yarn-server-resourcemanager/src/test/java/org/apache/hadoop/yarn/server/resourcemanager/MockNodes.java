@@ -191,6 +191,11 @@ public class MockNodes {
     }
 
     @Override
+    public Set<ContainerId> getLaunchedContainers() {
+      return null;
+    }
+
+    @Override
     public List<ApplicationId> getAppsToCleanup() {
       return null;
     }

@@ -135,6 +135,8 @@ public interface RMNode {
 
   public List<ContainerId> getContainersToCleanUp();
 
+  public Set<ContainerId> getLaunchedContainers();
+
   public List<ApplicationId> getAppsToCleanup();
 
   List<ApplicationId> getRunningApps();

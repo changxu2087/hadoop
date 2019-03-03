@@ -117,6 +117,11 @@ public class RMNodeWrapper implements RMNode {
   }
 
   @Override
+  public Set<ContainerId> getLaunchedContainers() {
+    return node.getLaunchedContainers();
+  }
+
+  @Override
   public List<ApplicationId> getAppsToCleanup() {
     return node.getAppsToCleanup();
   }

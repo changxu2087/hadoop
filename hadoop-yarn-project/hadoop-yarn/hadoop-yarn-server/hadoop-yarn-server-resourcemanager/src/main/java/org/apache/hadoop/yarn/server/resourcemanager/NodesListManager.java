@@ -551,6 +551,8 @@ public class NodesListManager extends CompositeService implements
     }
   }
 
+
+  //hostsList is not empty and hostsList and excludeList dont contains hostName.
   public boolean isUntrackedNode(String hostName) {
     String ip = resolver.resolve(hostName);
 

@@ -39,6 +39,7 @@ import org.apache.hadoop.yarn.api.records.ContainerUpdateType;
 import org.apache.hadoop.yarn.api.records.NMToken;
 import org.apache.hadoop.yarn.api.records.NodeId;
 import org.apache.hadoop.yarn.api.records.NodeReport;
+import org.apache.hadoop.yarn.api.records.NodeState;
 import org.apache.hadoop.yarn.api.records.PreemptionContainer;
 import org.apache.hadoop.yarn.api.records.PreemptionContract;
 import org.apache.hadoop.yarn.api.records.PreemptionMessage;
@@ -306,8 +307,18 @@ final class DefaultAMSProcessor implements ApplicationMasterServiceProcessor {
       }
     }
 
+    Set<ContainerId> decommissionContainers = new HashSet<>();
+    for (RMNode n : getRmContext().getRMNodes().values()) {
+      if (n.getState() == NodeState.DECOMMISSIONING) {
+        for (ContainerId c : n.getLaunchedContainers()) {
+          if (c.getApplicationAttemptId().equals(appAttemptId)) {
+            decommissionContainers.add(c);
+          }
+        }
+      }
+    }
     // add preemption to the allocateResponse message (if any)
-    response.setPreemptionMessage(generatePreemptionMessage(allocation));
+    response.setPreemptionMessage(generatePreemptionMessage(allocation, decommissionContainers));
 
     // Set application priority
     response.setApplicationPriority(app
@@ -376,7 +387,7 @@ final class DefaultAMSProcessor implements ApplicationMasterServiceProcessor {
             .getDiagnostics()));
   }
 
-  private PreemptionMessage generatePreemptionMessage(Allocation allocation){
+  private PreemptionMessage generatePreemptionMessage(Allocation allocation, Set<ContainerId> decommissionContainers){
     PreemptionMessage pMsg = null;
     // assemble strict preemption request
     if (allocation.getStrictContainerPreemptions() != null) {
@@ -385,7 +396,8 @@ final class DefaultAMSProcessor implements ApplicationMasterServiceProcessor {
       StrictPreemptionContract pStrict =
           recordFactory.newRecordInstance(StrictPreemptionContract.class);
       Set<PreemptionContainer> pCont = new HashSet<>();
-      for (ContainerId cId : allocation.getStrictContainerPreemptions()) {
+      decommissionContainers.addAll(allocation.getStrictContainerPreemptions());
+      for (ContainerId cId : decommissionContainers) {
         PreemptionContainer pc =
             recordFactory.newRecordInstance(PreemptionContainer.class);
         pc.setId(cId);
