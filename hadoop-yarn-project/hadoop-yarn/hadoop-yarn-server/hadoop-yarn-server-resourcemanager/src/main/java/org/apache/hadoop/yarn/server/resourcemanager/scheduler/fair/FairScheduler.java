@@ -138,7 +138,7 @@ public class FairScheduler extends
 
   private final int UPDATE_DEBUG_FREQUENCY = 25;
   private final Timer preemptionTimer;
-  private final long warnTimeBeforeKill;
+  private long warnTimeBeforeKill;
   private int updatesToSkipForDebug = UPDATE_DEBUG_FREQUENCY;
 
   @VisibleForTesting
@@ -190,7 +190,6 @@ public class FairScheduler extends
     queueMgr = new QueueManager(this);
     maxRunningEnforcer = new MaxRunningAppsEnforcer(this);
     preemptionTimer = new Timer("Preemption Timer", true);
-    warnTimeBeforeKill = getConf().getWaitTimeBeforeKill();
   }
 
   public FSContext getContext() {
@@ -1328,6 +1327,7 @@ public class FairScheduler extends
       sizeBasedWeight = this.conf.getSizeBasedWeight();
       usePortForNodeName = this.conf.getUsePortForNodeName();
       reservableNodesRatio = this.conf.getReservableNodes();
+      warnTimeBeforeKill = this.conf.getWaitTimeBeforeKill();
 
       updateInterval = this.conf.getUpdateInterval();
       if (updateInterval < 0) {
