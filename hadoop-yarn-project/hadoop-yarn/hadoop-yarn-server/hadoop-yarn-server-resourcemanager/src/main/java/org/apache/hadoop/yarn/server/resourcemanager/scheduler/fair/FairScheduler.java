@@ -22,15 +22,8 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.EnumSet;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock.ReadLock;
@@ -89,18 +82,9 @@ import org.apache.hadoop.yarn.server.resourcemanager.scheduler.QueueMetrics;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.SchedulerApplication;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.SchedulerUtils;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.common.QueueEntitlement;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.AppAddedSchedulerEvent;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.AppAttemptAddedSchedulerEvent;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.AppAttemptRemovedSchedulerEvent;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.AppRemovedSchedulerEvent;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.ContainerExpiredSchedulerEvent;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.NodeAddedSchedulerEvent;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.NodeRemovedSchedulerEvent;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.NodeResourceUpdateSchedulerEvent;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.NodeUpdateSchedulerEvent;
+import org.apache.hadoop.yarn.server.resourcemanager.scheduler.common.fica.FiCaSchedulerNode;
+import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.*;
 
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.ReleaseContainerEvent;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.SchedulerEvent;
 import org.apache.hadoop.yarn.server.resourcemanager.security.RMContainerTokenSecretManager;
 import org.apache.hadoop.yarn.util.resource.DefaultResourceCalculator;
 import org.apache.hadoop.yarn.util.resource.DominantResourceCalculator;
@@ -153,6 +137,8 @@ public class FairScheduler extends
   public static final Resource CONTAINER_RESERVED = Resources.createResource(-1);
 
   private final int UPDATE_DEBUG_FREQUENCY = 25;
+  private final Timer preemptionTimer;
+  private final long warnTimeBeforeKill;
   private int updatesToSkipForDebug = UPDATE_DEBUG_FREQUENCY;
 
   @VisibleForTesting
@@ -203,6 +189,8 @@ public class FairScheduler extends
     allocsLoader = new AllocationFileLoaderService();
     queueMgr = new QueueManager(this);
     maxRunningEnforcer = new MaxRunningAppsEnforcer(this);
+    preemptionTimer = new Timer("Preemption Timer", true);
+    warnTimeBeforeKill = getConf().getWaitTimeBeforeKill();
   }
 
   public FSContext getContext() {
@@ -1118,6 +1106,12 @@ public class FairScheduler extends
       NodeUpdateSchedulerEvent nodeUpdatedEvent = (NodeUpdateSchedulerEvent)event;
       nodeUpdate(nodeUpdatedEvent.getRMNode());
       break;
+      case NODE_PREEMPTION_UPDATE:
+      {
+        NodePreemptionUpdateSchedulerEvent nodePreemptEvent = (NodePreemptionUpdateSchedulerEvent) event;
+        preemptContainersFromNode(nodePreemptEvent.getRMNode());
+      }
+      break;
     case APP_ADDED:
       if (!(event instanceof AppAddedSchedulerEvent)) {
         throw new RuntimeException("Unexpected event type: " + event);
@@ -1198,6 +1192,51 @@ public class FairScheduler extends
       break;
     default:
       LOG.error("Unknown event arrived at FairScheduler: " + event.toString());
+    }
+  }
+
+  private void preemptContainersFromNode(RMNode nodeInfo) {
+    FSSchedulerNode node = nodeTracker.getNode(nodeInfo.getNodeID());
+    if (node == null) {
+      return;
+    }
+
+    // Preempt running containers of this node
+    List<RMContainer> runningContainers = node.getRunningContainersWithAMsAtTheEnd();
+    for (RMContainer container : runningContainers) {
+      preemptContainer(container.getApplicationAttemptId(), container);
+    }
+    preemptionTimer.schedule(new PreemptContainersTask(runningContainers), warnTimeBeforeKill);
+  }
+
+  private void preemptContainer(ApplicationAttemptId appAttemptId, RMContainer container) {
+    // Warn application about containers to be killed
+      FSAppAttempt app = getSchedulerApp(appAttemptId);
+      LOG.info("Preempting container " + container +
+              " from queue " + app.getQueueName());
+      app.trackContainerForPreemption(container);
+
+    // Schedule timer task to kill containers
+
+  }
+
+  private class PreemptContainersTask extends TimerTask {
+    private final List<RMContainer> containers;
+
+    PreemptContainersTask(List<RMContainer> containers) {
+      this.containers = containers;
+    }
+
+    @Override
+    public void run() {
+      for (RMContainer container : containers) {
+        ContainerStatus status = SchedulerUtils.createPreemptedContainerStatus(
+                container.getContainerId(), SchedulerUtils.PREEMPTED_CONTAINER);
+
+        LOG.info("Killing container " + container);
+        completedContainer(
+                container, status, RMContainerEventType.KILL);
+      }
     }
   }
 
