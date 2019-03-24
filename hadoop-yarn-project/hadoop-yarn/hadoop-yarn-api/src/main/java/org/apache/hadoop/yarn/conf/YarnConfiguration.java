@@ -933,6 +933,17 @@ public class YarnConfiguration extends Configuration {
   public static final int
       DEFAULT_RM_DECOMMISSIONING_NODES_WATCHER_POLL_INTERVAL = 20;
 
+  public static final String RM_DECOMMISSIONING_NODES_WATCHER_WAIT_FOR_APPLICATIONS =
+          RM_PREFIX + "decommissioning-nodes-watcher.wait-for-applications";
+  public static final boolean RM_DECOMMISSIONING_NODES_WATCHER_WAIT_FOR_APPLICATIONS_DEFAULT = true;
+  /**
+   * Whether to wait for app masters to finish before decommissioning a node.
+   * This property should only be set to false if app master failure is recoverable.
+   */
+  public static final String RM_DECOMMISSIONING_NODES_WATCHER_WAIT_FOR_APP_MASTERS =
+          RM_PREFIX + "decommissioning-nodes-watcher.wait-for-app-masters";
+  public static final boolean RM_DECOMMISSIONING_NODES_WATCHER_WAIT_FOR_APP_MASTERS_DEFAULT = true;
+
   ////////////////////////////////
   // Node Manager Configs
   ////////////////////////////////

@@ -28,15 +28,12 @@ import java.util.TimerTask;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.yarn.api.records.ApplicationId;
-import org.apache.hadoop.yarn.api.records.ContainerState;
-import org.apache.hadoop.yarn.api.records.ContainerStatus;
-import org.apache.hadoop.yarn.api.records.NodeId;
-import org.apache.hadoop.yarn.api.records.NodeState;
+import org.apache.hadoop.yarn.api.records.*;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.server.api.records.NodeStatus;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMApp;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppState;
+import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttempt;
 import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNode;
 import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNodeEvent;
 import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNodeEventType;
@@ -76,6 +73,11 @@ public class DecommissioningNodesWatcher {
   // Negative value indicates no timeout. 0 means immediate.
   private long defaultTimeoutMs =
       1000L * YarnConfiguration.DEFAULT_RM_NODE_GRACEFUL_DECOMMISSION_TIMEOUT;
+
+  private boolean waitForApplications =
+          YarnConfiguration.RM_DECOMMISSIONING_NODES_WATCHER_WAIT_FOR_APPLICATIONS_DEFAULT;
+  private boolean waitForAppMasters =
+          YarnConfiguration.RM_DECOMMISSIONING_NODES_WATCHER_WAIT_FOR_APP_MASTERS_DEFAULT;
 
   // Once a RMNode is observed in DECOMMISSIONING state,
   // All its ContainerStatus update are tracked inside DecomNodeContext.
@@ -137,6 +139,12 @@ public class DecommissioningNodesWatcher {
         YarnConfiguration.RM_DECOMMISSIONING_NODES_WATCHER_POLL_INTERVAL,
         YarnConfiguration
           .DEFAULT_RM_DECOMMISSIONING_NODES_WATCHER_POLL_INTERVAL);
+    waitForApplications = conf.getBoolean(
+            YarnConfiguration.RM_DECOMMISSIONING_NODES_WATCHER_WAIT_FOR_APPLICATIONS,
+            YarnConfiguration.RM_DECOMMISSIONING_NODES_WATCHER_WAIT_FOR_APPLICATIONS_DEFAULT);
+    waitForAppMasters = conf.getBoolean(
+            YarnConfiguration.RM_DECOMMISSIONING_NODES_WATCHER_WAIT_FOR_APP_MASTERS,
+            YarnConfiguration.RM_DECOMMISSIONING_NODES_WATCHER_WAIT_FOR_APP_MASTERS_DEFAULT);
     pollTimer.schedule(new PollTimerTask(rmContext), 0, (1000L * v));
   }
 
@@ -180,7 +188,12 @@ public class DecommissioningNodesWatcher {
         ContainerState newState = cs.getState();
         if (newState == ContainerState.RUNNING ||
             newState == ContainerState.NEW) {
-          numActiveContainers++;
+          if (waitForAppMasters) {
+            numActiveContainers++;
+          } else if(!isAppMaster(cs.getContainerId())) {
+            // Only wait on containers that are not app masters.
+            numActiveContainers++;
+          }
         }
         context.numActiveContainers = numActiveContainers;
         ApplicationId aid = cs.getContainerId()
@@ -261,7 +274,7 @@ public class DecommissioningNodesWatcher {
     }
 
     removeCompletedApps(context);
-    if (context.appIds.size() == 0) {
+    if (context.appIds.size() == 0 || !waitForApplications) {
       return DecommissioningNodeStatus.READY;
     } else {
       return (context.timeoutMs < 0 || waitTime < context.timeoutMs)?
@@ -332,6 +345,32 @@ public class DecommissioningNodesWatcher {
         }
       }
     }
+  }
+
+  private boolean isAppMaster(ContainerId containerId) {
+    ApplicationAttemptId appAttemptId = containerId.getApplicationAttemptId();
+    RMApp rmApp = rmContext.getRMApps().get(appAttemptId.getApplicationId());
+    if (rmApp == null) {
+      // This container could be an app master, but we have no way of knowing, so return false.
+      return false;
+    }
+
+    if (rmApp.getApplicationSubmissionContext().getUnmanagedAM()) {
+      // This container was launched by an application that has an unmanaged app master.
+      // Unmanaged app masters are run outside of yarn, so this container cannot be an app master.
+      return false;
+    }
+
+    RMAppAttempt rmAppAttempt = rmApp.getRMAppAttempt(appAttemptId);
+    if (rmAppAttempt == null) {
+      // This container could be an app master, but we have no way of knowing, so return false.
+      return false;
+    }
+
+    Container masterContainer = rmAppAttempt.getMasterContainer();
+    // This container is an app master if its id equals
+    // the id of the app attempt's master container.
+    return containerId.equals(masterContainer.getId());
   }
 
   private RMNode getRmNode(NodeId nodeId) {

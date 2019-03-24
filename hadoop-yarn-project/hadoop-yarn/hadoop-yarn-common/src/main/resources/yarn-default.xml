@@ -2764,6 +2764,31 @@
   </property>
 
   <property>
+    <description>
+      If true (the default), the resource manager waits for all containers,
+      as well as all applications associated with those containers,
+      to finish before gracefully decommissioning a node.
+      If false, the resource manager only waits for containers, but not applications,
+      to finish. For map-only jobs or other jobs in which mappers do not need to
+      serve shuffle data, this allows nodes to be decommissioned as soon as
+      their containers are finished as opposed to when the job is done.
+    </description>
+      <name>yarn.resourcemanager.decommissioning-nodes-watcher.wait-for-applications</name>
+      <value>true</value>
+  </property>
+
+  <property>
+    <description>
+      If false, during graceful decommission, when the resource manager waits for
+      all containers on a node to finish, it will not wait for app master containers
+      to finish. Defaults to true.
+      This property should only be set to false if app master failure is recoverable.
+    </description>
+      <name>yarn.resourcemanager.decommissioning-nodes-watcher.wait-for-app-masters</name>
+      <value>true</value>
+  </property>
+
+  <property>
     <description>The Node Label script to run. Script output Line starting with
      "NODE_PARTITION:" will be considered as Node Label Partition. In case of
      multiple lines have this pattern, then last one will be considered
