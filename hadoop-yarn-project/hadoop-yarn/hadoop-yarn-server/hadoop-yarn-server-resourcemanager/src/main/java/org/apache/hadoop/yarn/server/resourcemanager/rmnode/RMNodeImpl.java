@@ -76,10 +76,7 @@ import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppRunningOnNodeEve
 import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.ContainerAllocationExpirer;
 import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.AllocationExpirationInfo;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.SchedulerUtils;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.NodeAddedSchedulerEvent;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.NodeRemovedSchedulerEvent;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.NodeResourceUpdateSchedulerEvent;
-import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.NodeUpdateSchedulerEvent;
+import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.*;
 import org.apache.hadoop.yarn.server.utils.BuilderUtils.ContainerIdComparator;
 import org.apache.hadoop.yarn.state.InvalidStateTransitionException;
 import org.apache.hadoop.yarn.state.MultipleArcTransition;
@@ -1136,6 +1133,7 @@ public class RMNodeImpl implements RMNode, EventHandler<RMNodeEvent> {
       LOG.info("Put Node " + rmNode.nodeId + " in DECOMMISSIONING.");
       // Update NM metrics during graceful decommissioning.
       rmNode.updateMetricsForGracefulDecommission(initState, finalState);
+      rmNode.context.getDispatcher().getEventHandler().handle(new NodePreemptionUpdateSchedulerEvent(rmNode));
       rmNode.decommissioningTimeout = timeout;
       if (rmNode.originalTotalCapability == null){
         rmNode.originalTotalCapability =

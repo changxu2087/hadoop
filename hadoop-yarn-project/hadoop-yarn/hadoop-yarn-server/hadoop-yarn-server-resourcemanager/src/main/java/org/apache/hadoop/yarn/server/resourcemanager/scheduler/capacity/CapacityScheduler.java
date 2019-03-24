@@ -1479,6 +1479,12 @@ public class CapacityScheduler extends
       nodeUpdate(nodeUpdatedEvent.getRMNode());
     }
     break;
+    case NODE_PREEMPTION_UPDATE:
+    {
+      NodePreemptionUpdateSchedulerEvent nodePreemptEvent = (NodePreemptionUpdateSchedulerEvent) event;
+      preemptContainersFromNode(nodePreemptEvent.getRMNode());
+    }
+    break;
     case APP_ADDED:
     {
       AppAddedSchedulerEvent appAddedEvent = (AppAddedSchedulerEvent) event;
@@ -1686,6 +1692,18 @@ public class CapacityScheduler extends
               + getClusterResource());
     } finally {
       writeLock.unlock();
+    }
+  }
+  private void preemptContainersFromNode(RMNode nodeInfo) {
+    FiCaSchedulerNode node = nodeTracker.getNode(nodeInfo.getNodeID());
+    if (node == null) {
+      return;
+    }
+
+    // Preempt running containers of this node
+    List<RMContainer> runningContainers = node.getRunningContainersWithAMsAtTheEnd();
+    for (RMContainer container : runningContainers) {
+      markContainerForPreemption(container.getApplicationAttemptId(), container);
     }
   }
 
