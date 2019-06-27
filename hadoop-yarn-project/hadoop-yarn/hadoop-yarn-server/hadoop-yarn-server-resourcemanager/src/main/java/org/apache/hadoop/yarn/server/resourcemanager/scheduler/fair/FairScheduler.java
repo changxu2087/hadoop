@@ -137,7 +137,6 @@ public class FairScheduler extends
   public static final Resource CONTAINER_RESERVED = Resources.createResource(-1);
 
   private final int UPDATE_DEBUG_FREQUENCY = 25;
-  private final Timer preemptionTimer;
   private long warnTimeBeforeKill;
   private int updatesToSkipForDebug = UPDATE_DEBUG_FREQUENCY;
 
@@ -189,7 +188,6 @@ public class FairScheduler extends
     allocsLoader = new AllocationFileLoaderService();
     queueMgr = new QueueManager(this);
     maxRunningEnforcer = new MaxRunningAppsEnforcer(this);
-    preemptionTimer = new Timer("Preemption Timer", true);
   }
 
   public FSContext getContext() {
@@ -1196,6 +1194,8 @@ public class FairScheduler extends
 
   private void preemptContainersFromNode(RMNode nodeInfo) {
     FSSchedulerNode node = nodeTracker.getNode(nodeInfo.getNodeID());
+    Timer preemptionTimer = new Timer("Preemption Timer", true);
+
     if (node == null) {
       return;
     }
